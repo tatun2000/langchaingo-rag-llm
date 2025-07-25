@@ -28,23 +28,23 @@ Answer the question based on the above context: %v`
 func main() {
 	ctx := context.Background()
 
-	// 1. Читаем markdown-файл
+	// 1. Read the markdown file
 	data, err := os.ReadFile("data.md")
 	if err != nil {
 		panic(err)
 	}
 	text := string(data)
 
-	// 2. Разбиваем на чанки
+	// 2. Split the document into chunks
 	splitter := textsplitter.NewRecursiveCharacter()
 	chunks, err := splitter.SplitText(text)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("Recieved %d chunks\n", len(chunks))
+	fmt.Printf("Received %d chunks\n", len(chunks))
 
-	// 3. Создаём embedding-модель и Weaviate store
+	// 3. Initialize the embedder and Weaviate vector store
 	embedder := NewOllamaEmbedder(modelEmbedding, "http://localhost:11434")
 
 	store, err := weaviate.New(
@@ -56,23 +56,23 @@ func main() {
 		panic(err)
 	}
 
+	// 4. Convert chunks into schema.Documents and add to Weaviate
 	docs := make([]schema.Document, 0, len(chunks))
 	for _, chunk := range chunks {
 		docs = append(docs, schema.Document{
 			PageContent: chunk,
-			Metadata:    map[string]any{}, // можно добавить информацию, например {"source": "data.md"}
+			Metadata:    map[string]any{}, // optional metadata
 		})
 	}
 
-	// 4. Сохраняем чанки в Weaviate
 	if _, err = store.AddDocuments(ctx, docs); err != nil {
 		panic(err)
 	}
 
-	// 5. Получаем вопрос пользователя
+	// 5. Define the user question
 	userQuestion := "How many chapters in the Alice’s Adventures in Wonderland?"
 
-	// 6. Ищем релевантные чанки (топ-3)
+	// 6. Perform similarity search for top-3 relevant documents
 	relevant, err := store.SimilaritySearch(ctx, userQuestion, 3)
 	if err != nil {
 		panic(err)
@@ -82,12 +82,11 @@ func main() {
 		contextText = append(contextText, doc.PageContent)
 	}
 
-	// 7. Формируем prompt
+	// 7. Construct the final prompt
 	finalPrompt := fmt.Sprintf(promptTemplate, strings.Join(contextText, "\n---\n"), userQuestion)
-
 	log.Println(finalPrompt)
 
-	// 8. Отправляем в LLM
+	// 8. Query the LLM with the prompt
 	llm, err := ollama.New(ollama.WithModel(modelLLM))
 	if err != nil {
 		panic(err)
@@ -97,6 +96,6 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("\n✅ Ответ модели:")
+	fmt.Println("\nAnswer from the model:")
 	fmt.Println(completion)
 }
